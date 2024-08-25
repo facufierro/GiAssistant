@@ -25,9 +25,13 @@ class SheetService:
                     "values": [[rate]]
                 })
             
-            # Perform the batch update
-            self.sheet_client.sheet.batch_update(batch_data)
+            # Perform the batch update with valueInputOption to override existing values
+            self.sheet_client.sheet.batch_update(
+                batch_data,
+                value_input_option="RAW"
+            )
             logging.info(f"Batch updated {len(rates_to_update)} rows for {rate_type} rates.")
+
 
 
 
