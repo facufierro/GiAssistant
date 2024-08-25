@@ -17,10 +17,18 @@ class SheetService:
         rates_to_update = self._get_rates_to_update(dates_column, rate_type)
 
         if rates_to_update:
+            batch_data = []
             for row_num, rate in rates_to_update:
                 cell_range = f"{gspread.utils.rowcol_to_a1(row_num, target_column_index)}"
-                self.sheet_client.sheet.update(cell_range, [[rate]])
-                logging.info(f"Updated {rate_type} rate {rate} at row {row_num}.")
+                batch_data.append({
+                    "range": cell_range,
+                    "values": [[rate]]
+                })
+            
+            # Perform the batch update
+            self.sheet_client.sheet.batch_update(batch_data)
+            logging.info(f"Batch updated {len(rates_to_update)} rows for {rate_type} rates.")
+
 
 
 
@@ -41,6 +49,7 @@ class SheetService:
                 else:
                     logging.warning(f"Could not retrieve rate for date {date_str} at row {row_num}.")
         return rates_to_update
+
 
 
 
