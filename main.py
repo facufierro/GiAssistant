@@ -10,7 +10,7 @@ def main():
     # Initialize API Clients
     google_sheet_client = GoogleSheetClient(
         sheet_key="1M3Ulqna30dADDj-0ycJghQYUkv5xNGYaezw73uBivcM",
-        sheet_name="ventas-dev",
+        sheet_name="Ventas",
         credentials_file="gihelper-ecd24ac830f8.json"
     )
     

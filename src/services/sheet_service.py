@@ -1,6 +1,7 @@
 # path: services/sheet_service.py
 import logging
 import gspread
+from datetime import datetime
 
 class SheetService:
     def __init__(self, sheet_client, data_processor, api_client):
@@ -41,17 +42,27 @@ class SheetService:
         _, target_column_index = self.sheet_client.get_column_values(target_column_name)
         return dates_column, target_column_index
 
+    from datetime import datetime
+
     def _get_rates_to_update(self, dates_column, rate_type):
         rates_to_update = []
+        today = datetime.today().date()
+
         for row_num, fecha in dates_column.items():
             date_str = self.data_processor.parse_date(fecha)
             if date_str:
+                date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
+                if date_obj > today:
+                    logging.info(f"Skipping future date {date_str} at row {row_num}.")
+                    continue
+                
                 rate = self.api_client.get_rate(date_str, rate_type)
                 if rate:
-                    rates_to_update.append((row_num, rate))  # Store row number with rate
+                    rates_to_update.append((row_num, rate))
                     logging.debug(f"Added {rate_type} rate {rate} for row {row_num}.")
                 else:
                     logging.warning(f"Could not retrieve rate for date {date_str} at row {row_num}.")
+        
         return rates_to_update
 
 
