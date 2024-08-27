@@ -3,6 +3,7 @@ import logging
 import gspread
 from datetime import datetime
 
+
 class SheetService:
     def __init__(self, sheet_client, data_processor, api_client):
         self.sheet_client = sheet_client
@@ -25,17 +26,13 @@ class SheetService:
                     "range": cell_range,
                     "values": [[rate]]
                 })
-            
+
             # Perform the batch update with valueInputOption to override existing values
             self.sheet_client.sheet.batch_update(
                 batch_data,
                 value_input_option="RAW"
             )
             logging.info(f"Batch updated {len(rates_to_update)} rows for {rate_type} rates.")
-
-
-
-
 
     def _get_columns(self, date_column_name, target_column_name):
         dates_column, _ = self.sheet_client.get_column_values(date_column_name)
@@ -52,19 +49,15 @@ class SheetService:
             date_str = self.data_processor.parse_date(fecha)
             if date_str:
                 date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
+                # Use today's date if the date is in the future
                 if date_obj > today:
-                    logging.info(f"Skipping future date {date_str} at row {row_num}.")
-                    continue
-                
+                    date_str = today.strftime("%Y-%m-%d")
+
                 rate = self.api_client.get_rate(date_str, rate_type)
                 if rate:
                     rates_to_update.append((row_num, rate))
                     logging.debug(f"Added {rate_type} rate {rate} for row {row_num}.")
                 else:
                     logging.warning(f"Could not retrieve rate for date {date_str} at row {row_num}.")
-        
+
         return rates_to_update
-
-
-
-

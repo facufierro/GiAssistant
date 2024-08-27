@@ -2,6 +2,7 @@ import time
 import logging
 import requests
 
+
 class BluelyticsClient:
     def __init__(self, base_url):
         self.base_url = base_url
@@ -17,7 +18,7 @@ class BluelyticsClient:
                 if response.status_code == 429:
                     wait_time = 2 ** i
                     logging.error(f"HTTP error occurred: {http_err}. Retrying in {wait_time} seconds... (Retry {i+1}/{retries})")
-                    time.sleep(wait_time)  # Exponential backoff
+                    time.sleep(wait_time)
                 else:
                     logging.error(f"HTTP error occurred: {http_err}")
                     break
@@ -25,7 +26,7 @@ class BluelyticsClient:
                 logging.error(f"An error occurred: {err}")
                 break
         logging.error(f"Failed to fetch data after {retries} retries.")
-        return None  # Return None if all retries fail
+        return None
 
     def get_rate(self, date, rate_type):
         endpoint = f'historical?day={date}'
