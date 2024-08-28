@@ -1,4 +1,3 @@
-# path: services/sheet_service.py
 import logging
 import gspread
 from datetime import datetime
@@ -38,8 +37,6 @@ class SheetService:
         dates_column, _ = self.sheet_client.get_column_values(date_column_name)
         _, target_column_index = self.sheet_client.get_column_values(target_column_name)
         return dates_column, target_column_index
-
-    from datetime import datetime
 
     def _get_rates_to_update(self, dates_column, rate_type):
         rates_to_update = []
