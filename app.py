@@ -1,3 +1,4 @@
+# path: app.py
 from flask import Flask
 from src.controllers.rates_controller import rates_bp
 
