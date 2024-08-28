@@ -1,13 +1,17 @@
+import os
+from dotenv import load_dotenv
 from src.clients.bluelytics_client import BluelyticsClient
 from src.clients.google_sheets_client import GoogleSheetClient
 from src.services.sheet_service import SheetService
 from src.utils.data_processor import DataProcessor
 
+load_dotenv()
+
 
 class RatesService:
     def __init__(self):
         self.google_sheet_client = GoogleSheetClient(
-            sheet_key="1M3Ulqna30dADDj-0ycJghQYUkv5xNGYaezw73uBivcM",
+            sheet_key=os.getenv("DEV_PREVENTAS_VENTA_2024"),
             sheet_name="Ventas",
             credentials_file="gihelper-ecd24ac830f8.json"
         )
