@@ -1,26 +1,20 @@
-# path: app.py
+# app.py
+from flask import Flask, render_template
 import os
-import shutil
-from flask import Flask
-from src.controllers.home_controller import home_controller
+from dotenv import load_dotenv
+from src.controllers.clientes_controller import client_blueprint
+
+load_dotenv()
+
+app = Flask(__name__, template_folder=os.path.join('src', 'templates'))
+
+app.register_blueprint(client_blueprint)
 
 
-def create_app():
-    app = Flask(__name__)
-    app.register_blueprint(home_controller, url_prefix='/gi')
-
-    return app
+@app.route('/')
+def index():
+    return render_template('index.html')
 
 
-def clear_pycache():
-    root_dir = os.path.dirname(os.path.abspath(__file__))
-    for dirpath, dirnames, filenames in os.walk(root_dir):
-        if '__pycache__' in dirnames:
-            pycache_path = os.path.join(dirpath, '__pycache__')
-            shutil.rmtree(pycache_path)
-
-
-if __name__ == "__main__":
-    app = create_app()
-    clear_pycache()
-    app.run(host='0.0.0.0', port=5000)
+if __name__ == '__main__':
+    app.run(debug=True)
