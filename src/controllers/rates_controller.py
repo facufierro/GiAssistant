@@ -2,10 +2,10 @@
 from flask import Blueprint, jsonify
 from src.services.rates_service import RatesService
 
-rates_bp = Blueprint('rates', __name__)
+rates_controller = Blueprint('rates', __name__)
 
 
-@rates_bp.route('/update-rates', methods=['GET'])
+@rates_controller.route('/update-rates', methods=['GET'])
 def update_rates():
     service = RatesService()
     try:
