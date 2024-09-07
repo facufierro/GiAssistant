@@ -7,5 +7,5 @@ home_controller = Blueprint('home_controller', __name__)
 
 @home_controller.route('/', methods=['GET'])
 def index():
-    worksheet_names = list(spreadsheet_ventas_2024.worksheets.keys())
-    return jsonify({'message': 'giassistant is running', 'worksheets': worksheet_names}), 200
+    value = spreadsheet_ventas_2024.worksheets['Ventas'].cells[3,3].value
+    return jsonify({'message': 'giassistant is running', 'value': value}), 200
