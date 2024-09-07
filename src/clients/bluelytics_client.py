@@ -1,15 +1,14 @@
-# path: src/clients/bluelytics_client.py
 import time
 import logging
 import requests
 
 
 class BluelyticsClient:
-    def __init__(self, base_url):
-        self.base_url = base_url
+    base_url = 'https://api.bluelytics.com.ar/v2'  # You can keep this as a class-level variable
 
-    def fetch_data(self, endpoint, retries=5):
-        url = f'{self.base_url}/{endpoint}'
+    @staticmethod
+    def fetch_data(endpoint, retries=5):
+        url = f'{BluelyticsClient.base_url}/{endpoint}'
         for i in range(retries):
             try:
                 response = requests.get(url)
@@ -29,9 +28,10 @@ class BluelyticsClient:
         logging.error(f"Failed to fetch data after {retries} retries.")
         return None
 
-    def get_rate(self, date, rate_type):
+    @staticmethod
+    def get_rate(date, rate_type):
         endpoint = f'historical?day={date}'
-        data = self.fetch_data(endpoint)
+        data = BluelyticsClient.fetch_data(endpoint)
         if data:
             try:
                 return str(data[rate_type]['value_sell'])

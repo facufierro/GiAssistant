@@ -2,16 +2,12 @@
 import os
 import shutil
 from flask import Flask
-from src.controllers.rates_controller import rates_controller
 from src.controllers.home_controller import home_controller
 
 
 def create_app():
     app = Flask(__name__)
-
-    # Register Blueprints
     app.register_blueprint(home_controller, url_prefix='/gi')
-    app.register_blueprint(rates_controller, url_prefix='/gi/rates')
 
     return app
 
