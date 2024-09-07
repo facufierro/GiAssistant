@@ -12,7 +12,7 @@ load_dotenv()
 class RatesService:
     def __init__(self):
         self.google_sheet_client = GoogleSheetClient(
-            sheet_key=os.getenv("DEV_PREVENTAS_VENTA_2024"),
+            sheet_key=os.getenv("PREVENTAS_VENTA_2024"),
             sheet_name="Ventas",
             credentials_file="gihelper-ecd24ac830f8.json"
         )
