@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, jsonify
 from src.services.sheet_service import SheetService
 from src.services.rates_service import RatesService
 from src.clients.sheets_client import get_sheet_client
@@ -21,35 +21,22 @@ rates_service = RatesService()
 # Create Blueprint
 sheets_bp = Blueprint('sheets', __name__)
 
+# Predefined sheet name and columns
+SHEET_NAME = "Ventas"
+COLUMNS = ["FECHA DE INGRESO", "COTIZACIÓN OFICIAL", "COTIZACIÓN BLUE"]
+
 
 @sheets_bp.route('/update_sheet', methods=['GET'])
 def update_sheet():
     """
     API route to fetch Google Sheet data, compare with exchange rates, and update values.
 
-    Query Parameters:
-        - sheet_name (str): The name of the worksheet.
-        - columns (str): Comma-separated list of column names.
-
-    Example:
-        GET /update_sheet?sheet_name=Ventas&columns=FECHA%20DE%20VENTA,COTIZACIÓN%20OFICIAL,COTIZACIÓN%20BLUE
-
     Returns:
         JSON response with success or failure message.
     """
-    sheet_name = request.args.get('sheet_name')
-    columns_param = request.args.get('columns')
-
-    # Validate parameters
-    if not sheet_name or not columns_param:
-        return jsonify({"error": "Missing required parameters: 'sheet_name' and 'columns'"}), 400
-
-    # Convert comma-separated string to list
-    column_names = [col.strip() for col in columns_param.split(",")]
-
     # Fetch Google Sheets data
     sheet_data = sheet_service.get_dates(
-        SHEET_ID, sheet_name, "FECHA DE INGRESO")
+        SHEET_ID, SHEET_NAME, "FECHA DE INGRESO")
 
     # Get the rates data
     rates_data = rates_service.get_rates()
@@ -60,6 +47,6 @@ def update_sheet():
 
     # Write the new values back to Google Sheets
     result = sheet_service.write_updated_rates(
-        SHEET_ID, sheet_name, updated_data)
+        SHEET_ID, SHEET_NAME, updated_data)
 
     return jsonify(result)
