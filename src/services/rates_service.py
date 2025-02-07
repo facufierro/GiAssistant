@@ -13,32 +13,36 @@ class RatesService:
         return response.json() if response.status_code == 200 else None
 
     def compare_and_update_rates(self, sheet_data, rates_data):
-        """
-        Compares dates from Google Sheets with the rates from `get_rates()` and updates the sheet data.
+        """     
+        Compares dates from Google Sheets with the rates and updates the sheet data.
 
         Args:
-            sheet_data (dict): Data from Google Sheets (output of get_values()).
+            sheet_data (list): Data from Google Sheets (output of get_dates()["data"]).
             rates_data (list): Data from `get_rates()` (list of rates with 'date', 'source', and 'value_sell').
 
         Returns:
-            dict: The updated sheet data with COTIZACIÓN OFICIAL and COTIZACIÓN BLUE filled in.
+            dict: The updated sheet data with exchange rates filled in.
         """
-        # Create a dictionary of rates by date and source
+        if not isinstance(sheet_data, list):  # ✅ Ensure sheet_data["data"] is a list
+            raise TypeError(f"Expected list, got {type(sheet_data)}")
+
         rates_dict = {}
         for rate in rates_data:
             if rate["date"] not in rates_dict:
                 rates_dict[rate["date"]] = {}
             rates_dict[rate["date"]][rate["source"]] = rate["value_sell"]
 
-        # Iterate over sheet data and update rates
-        for row in sheet_data["data"]:
-            sheet_date = row.get("FECHA DE INGRESO")
+        for row in sheet_data:  # ✅ Loop safely
+            fecha_ingreso = row.get("FECHA DE INGRESO", None)
+            fecha_venta = row.get("FECHA DE VENTA", None)
 
-            # Check if the date exists in the rates dictionary
-            if sheet_date in rates_dict:
-                if "Oficial" in rates_dict[sheet_date]:
-                    row["COTIZACIÓN OFICIAL"] = rates_dict[sheet_date]["Oficial"]
-                if "Blue" in rates_dict[sheet_date]:
-                    row["COTIZACIÓN BLUE"] = rates_dict[sheet_date]["Blue"]
+            # Use fecha_venta if fecha_ingreso is missing
+            final_date = fecha_ingreso if fecha_ingreso else fecha_venta
 
-        return sheet_data  # Return updated data
+            if final_date in rates_dict:
+                row["COTIZACIÓN OFICIAL"] = rates_dict[final_date].get(
+                    "Oficial", "N/A")
+                row["COTIZACIÓN BLUE"] = rates_dict[final_date].get(
+                    "Blue", "N/A")
+
+        return {"data": sheet_data}  # ✅ Ensure it returns a dictionary

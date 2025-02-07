@@ -34,19 +34,33 @@ def update_sheet():
     Returns:
         JSON response with success or failure message.
     """
+    SHEET_NAME = "Ventas"  # Ensure this matches your actual sheet tab name
+    # Ensure this column exists in your sheet
+    COLUMN_FECHA_INGRESO = "FECHA DE INGRESO"
+    COLUMN_FECHA_VENTA = "FECHA DE VENTA"  # Ensure this column exists in your sheet
+
     # Fetch Google Sheets data
     sheet_data = sheet_service.get_dates(
-        SHEET_ID, SHEET_NAME, "FECHA DE INGRESO")
+        SHEET_ID, SHEET_NAME, COLUMN_FECHA_INGRESO, COLUMN_FECHA_VENTA  # ✅ Pass both columns
+    )
 
     # Get the rates data
     rates_data = rates_service.get_rates()
 
-    # Compare and update rates
+    print("DEBUG: sheet_data =", sheet_data)
+    if not isinstance(sheet_data, dict):  # Ensure it's always a dictionary
+        raise TypeError(f"Expected dict, got {type(sheet_data)}")
+
+    if "data" not in sheet_data:  # Ensure "data" key exists
+        raise KeyError(f"Missing 'data' key in sheet_data: {sheet_data}")
+
     updated_data = rates_service.compare_and_update_rates(
-        sheet_data, rates_data)
+        sheet_data["data"], rates_data  # ✅ Ensure correct dictionary key
+    )
 
     # Write the new values back to Google Sheets
     result = sheet_service.write_updated_rates(
-        SHEET_ID, SHEET_NAME, updated_data)
+        SHEET_ID, SHEET_NAME, updated_data
+    )
 
     return jsonify(result)
