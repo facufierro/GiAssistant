@@ -1,5 +1,6 @@
 import requests
 
+
 class RatesService:
     """Service for fetching exchange rate data."""
 
@@ -11,28 +12,33 @@ class RatesService:
         response = requests.get(self.url)
         return response.json() if response.status_code == 200 else None
 
-    def filter_rates(self, dates: list, source: str):
+    def compare_and_update_rates(self, sheet_data, rates_data):
         """
-        Filters exchange rates for multiple dates based on the specified source.
+        Compares dates from Google Sheets with the rates from `get_rates()` and updates the sheet data.
 
         Args:
-            dates (list): A list of dates to filter by (format: "YYYY-MM-DD").
-            source (str): The exchange rate source (e.g., "Oficial", "Blue").
+            sheet_data (dict): Data from Google Sheets (output of get_values()).
+            rates_data (list): Data from `get_rates()` (list of rates with 'date', 'source', and 'value_sell').
 
         Returns:
-            list: A list of matching exchange rate entries.
+            dict: The updated sheet data with COTIZACIÓN OFICIAL and COTIZACIÓN BLUE filled in.
         """
-        all_rates = self.get_rates()
-        if not all_rates:
-            return None  # API call failed, return None
+        # Create a dictionary of rates by date and source
+        rates_dict = {}
+        for rate in rates_data:
+            if rate["date"] not in rates_dict:
+                rates_dict[rate["date"]] = {}
+            rates_dict[rate["date"]][rate["source"]] = rate["value_sell"]
 
-        # Normalize source input to lowercase for case-insensitive comparison
-        source = source.lower()
+        # Iterate over sheet data and update rates
+        for row in sheet_data["data"]:
+            sheet_date = row.get("FECHA DE INGRESO")
 
-        # Filter the list for matching dates and source
-        filtered_rates = [
-            rate for rate in all_rates
-            if rate["date"] in dates and rate["source"].lower() == source
-        ]
+            # Check if the date exists in the rates dictionary
+            if sheet_date in rates_dict:
+                if "Oficial" in rates_dict[sheet_date]:
+                    row["COTIZACIÓN OFICIAL"] = rates_dict[sheet_date]["Oficial"]
+                if "Blue" in rates_dict[sheet_date]:
+                    row["COTIZACIÓN BLUE"] = rates_dict[sheet_date]["Blue"]
 
-        return filtered_rates if filtered_rates else None  # Return None if no matches found
+        return sheet_data  # Return updated data
