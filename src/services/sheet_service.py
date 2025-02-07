@@ -63,7 +63,13 @@ class SheetService:
                 formatted_venta = self._format_dates(
                     venta_value, row_num) if venta_value.strip() else None
 
-                # If 'FECHA DE INGRESO' is empty, use 'FECHA DE VENTA'
+                # If 'FECHA DE INGRESO' is empty or in the future, use 'FECHA DE VENTA'
+                if formatted_ingreso:
+                    formatted_ingreso = datetime.strptime(
+                        formatted_ingreso, "%Y-%m-%d").date()
+
+                if formatted_ingreso and formatted_ingreso > datetime.now().date():
+                    formatted_ingreso = None
                 final_date = formatted_ingreso if formatted_ingreso else formatted_venta
 
                 if final_date:  # ✅ Add only valid dates
