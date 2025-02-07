@@ -1,61 +1,63 @@
-# path: src/services/sheet_service.py
-import logging 
 import gspread
-from datetime import datetime
+import logging
+from flask import jsonify
 
 
 class SheetService:
-    def __init__(self, sheet_client, data_processor, api_client):
+    """
+    Service class for retrieving a column from a specified Google Sheet and returning it as JSON.
+
+    Attributes:
+        sheet_client: An instance of the Google Sheets client.
+    """
+
+    def __init__(self, sheet_client):
+        """
+        Initializes the SheetService with the Google Sheets client.
+
+        Args:
+            sheet_client: An authenticated gspread client.
+        """
         self.sheet_client = sheet_client
-        self.data_processor = data_processor
-        self.api_client = api_client
 
-    def update_rates(self, date_column_name, target_column_name, rate_type):
-        dates_column, target_column_index = self._get_columns(date_column_name, target_column_name)
-        if dates_column is None or target_column_index is None:
-            logging.error("Required columns not found in the sheet.")
-            return
+    def get_column_as_json(self, sheet_id, sheet_name, column_name):
+        """
+        Retrieves a specific column from a specified Google Sheet and worksheet.
 
-        rates_to_update = self._get_rates_to_update(dates_column, rate_type)
+        Args:
+            sheet_id (str): The Google Sheet ID.
+            sheet_name (str): The worksheet (tab) name within the sheet.
+            column_name (str): The name of the column to retrieve.
 
-        if rates_to_update:
-            batch_data = []
-            for row_num, rate in rates_to_update:
-                cell_range = f"{gspread.utils.rowcol_to_a1(row_num, target_column_index)}"
-                batch_data.append({
-                    "range": cell_range,
-                    "values": [[rate]]
-                })
+        Returns:
+            JSON response containing the column data.
+        """
+        try:
+            # Open the Google Sheet by ID and worksheet name
+            sheet = self.sheet_client.open_by_key(
+                sheet_id).worksheet(sheet_name)
 
-            # Perform the batch update with valueInputOption to override existing values
-            self.sheet_client.sheet.batch_update(
-                batch_data,
-                value_input_option="RAW"
-            )
-            logging.info(f"Batch updated {len(rates_to_update)} rows for {rate_type} rates.")
+            # Get column values (Find the column index dynamically)
+            headers = sheet.row_values(1)  # Get the first row (headers)
+            if column_name not in headers:
+                return jsonify({"error": f"Column '{column_name}' not found"}), 404
 
-    def _get_columns(self, date_column_name, target_column_name):
-        dates_column, _ = self.sheet_client.get_column_values(date_column_name)
-        _, target_column_index = self.sheet_client.get_column_values(target_column_name)
-        return dates_column, target_column_index
+            # Convert to 1-based index
+            col_index = headers.index(column_name) + 1
+            column_values = sheet.col_values(
+                col_index)[1:]  # Skip the header row
 
-    def _get_rates_to_update(self, dates_column, rate_type):
-        rates_to_update = []
-        today = datetime.today().date()
+            return jsonify({column_name: column_values}), 200
 
-        for row_num, fecha in dates_column.items():
-            date_str = self.data_processor.parse_date(fecha)
-            if date_str:
-                date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
-                # Use today's date if the date is in the future
-                if date_obj > today:
-                    date_str = today.strftime("%Y-%m-%d")
+        except gspread.exceptions.SpreadsheetNotFound:
+            logging.error(f"Sheet with ID '{sheet_id}' not found.")
+            return jsonify({"error": f"Sheet with ID '{sheet_id}' not found"}), 404
 
-                rate = self.api_client.get_rate(date_str, rate_type)
-                if rate:
-                    rates_to_update.append((row_num, rate))
-                    logging.debug(f"Added {rate_type} rate {rate} for row {row_num}.")
-                else:
-                    logging.warning(f"Could not retrieve rate for date {date_str} at row {row_num}.")
+        except gspread.exceptions.WorksheetNotFound:
+            logging.error(
+                f"Worksheet '{sheet_name}' not found in sheet '{sheet_id}'.")
+            return jsonify({"error": f"Worksheet '{sheet_name}' not found in sheet '{sheet_id}'"}), 404
 
-        return rates_to_update
+        except Exception as e:
+            logging.error(f"Error retrieving column '{column_name}': {str(e)}")
+            return jsonify({"error": "Internal server error"}), 500

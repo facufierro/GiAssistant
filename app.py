@@ -1,14 +1,13 @@
-# path: app.py
 from flask import Flask
 from src.controllers.rates_controller import rates_bp
+from src.controllers.sheets_controller import sheets_bp
 
 
 def create_app():
     app = Flask(__name__)
 
-    # Register Blueprints
-    app.register_blueprint(rates_bp, url_prefix='/gi')
-
+    app.register_blueprint(rates_bp)
+    app.register_blueprint(sheets_bp)
     return app
 
 
