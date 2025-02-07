@@ -47,7 +47,6 @@ def update_sheet():
     # Get the rates data
     rates_data = rates_service.get_rates()
 
-    print("DEBUG: sheet_data =", sheet_data)
     if not isinstance(sheet_data, dict):  # Ensure it's always a dictionary
         raise TypeError(f"Expected dict, got {type(sheet_data)}")
 
