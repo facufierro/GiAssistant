@@ -20,27 +20,30 @@ sheet_service = SheetService(sheet_client)
 sheets_bp = Blueprint('sheets', __name__)
 
 
-@sheets_bp.route('/get_column', methods=['GET'])
-def get_column():
+@sheets_bp.route('/get_values', methods=['GET'])
+def get_values():
     """
-    API route to fetch a specific column from a Google Sheet.
+    API route to fetch values along with row numbers from specified Google Sheet columns.
 
     Query Parameters:
         - sheet_name (str): The name of the worksheet (tab) inside the sheet.
-        - column (str): The name of the column to retrieve.
+        - columns (str): Comma-separated list of column names.
 
     Example:
-        GET /get_column?sheet_name=Ventas&column=COTIZACIÓN OFICIAL
+        GET /get_values?sheet_name=Ventas&columns=COTIZACIÓN OFICIAL,Fecha
 
     Returns:
-        JSON response with the column data or an error message.
+        JSON response with values and row numbers.
     """
     sheet_name = request.args.get('sheet_name')
-    column_name = request.args.get('column')
+    columns_param = request.args.get('columns')
 
     # Validate required parameters
-    if not sheet_name or not column_name:
-        return jsonify({"error": "Missing required parameters: 'sheet_name' and 'column'"}), 400
+    if not sheet_name or not columns_param:
+        return jsonify({"error": "Missing required parameters: 'sheet_name' and 'columns'"}), 400
 
-    # Retrieve and return column data using SHEET_ID from .env
-    return sheet_service.get_column_as_json(SHEET_ID, sheet_name, column_name)
+    # Convert comma-separated string to list of column names
+    column_names = [col.strip() for col in columns_param.split(",")]
+
+    # Retrieve and return column data
+    return sheet_service.get_values_with_rows(SHEET_ID, sheet_name, column_names)
