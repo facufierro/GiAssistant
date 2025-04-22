@@ -1,65 +1,72 @@
-from flask import Blueprint, jsonify
+import os
+import io
+import logging
+from flask import Blueprint, render_template_string
+from dotenv import load_dotenv
+from src.models.sheet import Sheet
 from src.services.sheet_service import SheetService
 from src.services.rates_service import RatesService
 from src.clients.sheets_client import get_sheet_client
-import os
-from dotenv import load_dotenv
 
-# Load environment variables from .env
+
+class InMemoryLogHandler(logging.Handler):
+    def __init__(self):
+        super().__init__()
+        self.log_output = io.StringIO()
+
+    def emit(self, record):
+        self.log_output.write(self.format(record) + "\n")
+
+    def get_logs(self):
+        return self.log_output.getvalue()
+
+
 load_dotenv()
-
-# Get Google Sheet ID from .env
-SHEET_ID = os.getenv("SHEET_ID")
-if not SHEET_ID:
-    raise ValueError("Missing SHEET_ID in .env file")
-
-# Initialize services
-sheet_client = get_sheet_client()
-sheet_service = SheetService(sheet_client)
+sheets_bp = Blueprint("sheets", __name__)
+sheet_service = SheetService(get_sheet_client())
 rates_service = RatesService()
 
-# Create Blueprint
-sheets_bp = Blueprint('sheets', __name__)
+SHEETS_TO_UPDATE = [
+    Sheet("16GpI2yKovf5sqyeBD42CAMP1W4C2-Ap_tpuoBPBv34s", "Ventas", "FECHA DE INGRESO", "COTIZACIÓN OFICIAL", "Oficial"),
+    Sheet("16GpI2yKovf5sqyeBD42CAMP1W4C2-Ap_tpuoBPBv34s", "Ventas", "FECHA DE INGRESO", "COTIZACIÓN BLUE", "Blue"),
+    Sheet("1oJ_miq5ZI-A28-cyK4gZMXWAP5PdO94nkFOAHYRm4c8", "Selección IT", "FECHA DE INICIO", "COTIZ", "Blue"),
+    Sheet("1oJ_miq5ZI-A28-cyK4gZMXWAP5PdO94nkFOAHYRm4c8", "Selección", "FECHA DE INICIO", "COTIZ", "Blue"),
+    Sheet("1oJ_miq5ZI-A28-cyK4gZMXWAP5PdO94nkFOAHYRm4c8", "Employee Experience", "FECHA DE INICIO", "COTIZ", "Blue"),
+    Sheet("1oJ_miq5ZI-A28-cyK4gZMXWAP5PdO94nkFOAHYRm4c8", "Cap. In Company", "FECHA DE INICIO", "COTIZ", "Blue"),
+    Sheet("1oJ_miq5ZI-A28-cyK4gZMXWAP5PdO94nkFOAHYRm4c8", "Workshop", "FECHA DE INICIO", "COTIZ", "Blue"),
+    Sheet("1oJ_miq5ZI-A28-cyK4gZMXWAP5PdO94nkFOAHYRm4c8", "Otros Ing", "FECHA DE INICIO", "COTIZ", "Blue"),
+]
 
-# Predefined sheet name and columns
-SHEET_NAME = "Ventas"
-COLUMNS = ["FECHA DE INGRESO", "COTIZACIÓN OFICIAL", "COTIZACIÓN BLUE"]
 
-
-@sheets_bp.route('/update_sheet', methods=['GET'])
+@sheets_bp.route("/update_sheet", methods=["GET"])
 def update_sheet():
-    """
-    API route to fetch Google Sheet data, compare with exchange rates, and update values.
+    log_handler = InMemoryLogHandler()
+    log_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+    logging.getLogger().addHandler(log_handler)
 
-    Returns:
-        JSON response with success or failure message.
-    """
-    SHEET_NAME = "Ventas"  # Ensure this matches your actual sheet tab name
-    # Ensure this column exists in your sheet
-    COLUMN_FECHA_INGRESO = "FECHA DE INGRESO"
-    COLUMN_FECHA_VENTA = "FECHA DE VENTA"  # Ensure this column exists in your sheet
+    rates = rates_service.get_rates()
+    results = [
+        {
+            "sheet_name": sheet.sheet_name,
+            "rate_column": sheet.rate_column,
+            "status": sheet_service.update_sheet(sheet, rates)
+        }
+        for sheet in SHEETS_TO_UPDATE
+    ]
 
-    # Fetch Google Sheets data
-    sheet_data = sheet_service.get_dates(
-        SHEET_ID, SHEET_NAME, COLUMN_FECHA_INGRESO, COLUMN_FECHA_VENTA  # ✅ Pass both columns
-    )
-
-    # Get the rates data
-    rates_data = rates_service.get_rates()
-
-    if not isinstance(sheet_data, dict):  # Ensure it's always a dictionary
-        raise TypeError(f"Expected dict, got {type(sheet_data)}")
-
-    if "data" not in sheet_data:  # Ensure "data" key exists
-        raise KeyError(f"Missing 'data' key in sheet_data: {sheet_data}")
-
-    updated_data = rates_service.compare_and_update_rates(
-        sheet_data["data"], rates_data  # ✅ Ensure correct dictionary key
-    )
-
-    # Write the new values back to Google Sheets
-    result = sheet_service.write_updated_rates(
-        SHEET_ID, SHEET_NAME, updated_data
-    )
-
-    return jsonify(result)
+    logging.getLogger().removeHandler(log_handler)
+    return render_template_string("""
+        <html><head><title>Sheet Update Results</title>
+        <style>body { font-family: monospace; background: #f4f4f4; padding: 20px; }
+        pre { background: #000; color: #0f0; padding: 20px; overflow-x: auto; max-height: 400px; }
+        h1 { color: #333; }</style></head>
+        <body>
+            <h1>✅ Sheet Update Results</h1>
+            {% for r in results %}
+                <h2>{{ r.sheet_name }}</h2>
+                <p><strong>Status:</strong> {{ r.status.message or r.status.error }}</p>
+            {% endfor %}
+            <h2>📜 Logs</h2>
+            <pre>{{ logs }}</pre>
+        </body></html>
+    """, results=results, logs=log_handler.get_logs())
