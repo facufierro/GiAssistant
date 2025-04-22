@@ -1,48 +1,86 @@
-from flask import Blueprint, jsonify, request
+import logging
+import io
+from flask import Blueprint, render_template_string
 from src.services.rates_service import RatesService
+from src.services.sheet_service import SheetService
+from src.clients.sheets_client import get_sheet_client
+from src.models.sheet import Sheet
 
-rates_bp = Blueprint('rates', __name__)
-service = RatesService()
+rates_bp = Blueprint("rates", __name__)
+rates_service = RatesService()
+sheet_service = SheetService(get_sheet_client())
 
 
-@rates_bp.route('/get_rates', methods=['GET'])
-def get_rates():
-    """
-    API route to fetch exchange rate data.
+class InMemoryLogHandler(logging.Handler):
+    def __init__(self):
+        super().__init__()
+        self.log_output = io.StringIO()
 
-    Query Parameters (Optional):
-        - dates: Comma-separated list of dates (YYYY-MM-DD,YYYY-MM-DD)
-        - source: The exchange rate source (e.g., "Oficial", "Blue")
+    def emit(self, record):
+        self.log_output.write(self.format(record) + "\n")
 
-    Behavior:
-        - If no parameters are provided, return the full dataset.
-        - If 'dates' and 'source' are provided, filter the results accordingly.
+    def get_logs(self):
+        return self.log_output.getvalue()
 
-    Example Calls:
-        - GET /get_rates  -> Returns full dataset
-        - GET /get_rates?dates=2025-02-07,2025-02-05&source=Blue -> Returns filtered results
 
-    Returns:
-        JSON response with exchange rates or an error message.
-    """
-    # Get query parameters
-    dates_param = request.args.get('dates')
-    source = request.args.get('source')
+@rates_bp.route("/get_rates", methods=["GET"])
+def get_all_rates_and_append():
+    log_handler = InMemoryLogHandler()
+    log_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+    logging.getLogger().addHandler(log_handler)
 
-    # If no parameters provided, return full dataset
-    if not dates_param and not source:
-        all_rates = service.get_rates()
-        return jsonify(all_rates) if all_rates else jsonify({"message": "No data available"}), 500
+    try:
+        all_rates = rates_service.get_rates()
+        if not all_rates:
+            raise Exception("Could not fetch rates from Bluelytics API.")
 
-    # Validate required parameters for filtering
-    if not dates_param or not source:
-        return jsonify({"error": "Missing required parameters: 'dates' and 'source'"}), 400
+        # Group by date
+        rate_map = {}
+        for rate in all_rates:
+            date = rate["date"]
+            if date not in rate_map:
+                rate_map[date] = {}
+            rate_map[date][rate["source"]] = rate["value_sell"]
 
-    # Convert comma-separated string to list of dates
-    dates_list = dates_param.split(",")
+        # Build rows: FECHA, BLUE, OFICIAL
+        rows = []
+        for date, sources in sorted(rate_map.items()):
+            blue = sources.get("Blue", "")
+            oficial = sources.get("Oficial", "")
+            rows.append([date, blue, oficial])
 
-    # Fetch filtered rates
-    filtered_rates = service.filter_rates(dates_list, source)
+        if not rows:
+            raise Exception("No data rows to append.")
 
-    # Return the filtered rates or a message if no data found
-    return jsonify(filtered_rates) if filtered_rates else jsonify({"message": "No rates found"}), 404
+        # Sheet config
+        sheet = Sheet(
+            worksheet_id="1OmXgQWSe3bg0byWuesE7osBlWFajzKt_QAdb4pbPXf4",
+            sheet_name="Cotiz USD blue",
+            date_column="FECHA",
+            rate_column="BLUE",  # <- just a dummy for compatibility
+            rate_type="",        # <- not needed here
+        )
+
+        result = sheet_service.append_custom_rates(sheet, rows, expected_headers=["FECHA", "BLUE", "OFICIAL"])
+
+    except Exception as e:
+        result = {"error": str(e)}
+        logging.error(f"[ERROR] Failed to update rate history: {e}")
+
+    logging.getLogger().removeHandler(log_handler)
+    logs = log_handler.get_logs()
+
+    return render_template_string("""
+        <html><head><title>Rate Sheet Update</title>
+        <style>
+            body { font-family: monospace; background: #f4f4f4; padding: 20px; }
+            pre { background: #000; color: #0f0; padding: 20px; overflow-x: auto; max-height: 400px; }
+            h1 { color: #333; }
+        </style></head>
+        <body>
+            <h1>✅ Full Rate Sheet Update</h1>
+            <p><strong>Status:</strong> {{ result.message or result.error }}</p>
+            <h2>📜 Logs</h2>
+            <pre>{{ logs }}</pre>
+        </body></html>
+    """, result=result, logs=logs)

@@ -2,9 +2,10 @@ from datetime import datetime, timedelta
 import gspread
 import logging
 import traceback
+import time
 from dateutil import parser
+from gspread.exceptions import APIError
 from src.models.sheet import Sheet
-from bisect import bisect_left
 
 
 class SheetService:
@@ -13,43 +14,73 @@ class SheetService:
 
     def update_sheet(self, sheet: Sheet, rates: list) -> dict:
         rows = self._get_valid_rows(sheet)
-        if not rows["data"]:
-            return {"message": "No valid dates found.", "invalid_data": rows["invalid_data"]}
+        if not rows or not rows.get("data"):
+            return {"message": "No valid dates found.", "invalid_data": rows.get("invalid_data", [])}
 
         updated = self._apply_rates(rows["data"], rates, sheet)
         write_result = self._write_rates(sheet, updated)
         return {**write_result, "invalid_data": rows["invalid_data"], "matched_rows": len(updated)}
 
+    def _retry_gspread_call(self, func, *args, retries=5, delay=10, **kwargs):
+        for attempt in range(retries):
+            try:
+                return func(*args, **kwargs)
+            except APIError as e:
+                if "429" in str(e):
+                    wait = delay * (attempt + 1)
+                    logging.warning(f"Rate limit hit. Retrying in {wait}s... (attempt {attempt + 1})")
+                    time.sleep(wait)
+                else:
+                    raise
+        raise Exception(f"Rate limit retry failed after {retries} attempts.")
+
     def _get_valid_rows(self, sheet: Sheet) -> dict:
         try:
             ws = self.client.open_by_key(sheet.worksheet_id).worksheet(sheet.sheet_name)
-            headers = ws.row_values(1)
+            headers = self._retry_gspread_call(ws.row_values, 1)
+
             if sheet.date_column not in headers:
-                msg = f"Missing date column '{sheet.date_column}'"
+                msg = f"Missing required column: {sheet.date_column}"
                 logging.warning(msg)
                 return {"data": [], "invalid_data": [], "error": msg}
 
-            idx = headers.index(sheet.date_column) + 1
-            values = ws.col_values(idx)[1:]
-            valid, invalid = [], []
+            date_idx = headers.index(sheet.date_column) + 1
+            dates = self._retry_gspread_call(ws.col_values, date_idx)[1:]
 
-            for i, val in enumerate(values, start=2):
-                date = self._parse_date(val)
-                (valid if date else invalid).append(
-                    {"row": i, sheet.date_column: date} if date else {"row": i, "value": val}
-                )
+            currencies = []
+            currency_idx = None
+            if sheet.currency_column and sheet.currency_column in headers:
+                currency_idx = headers.index(sheet.currency_column) + 1
+                currencies = self._retry_gspread_call(ws.col_values, currency_idx)[1:]
+            else:
+                currencies = [None] * len(dates)
+
+            valid, invalid = [], []
+            for i, (date_val, currency_val) in enumerate(zip(dates, currencies), start=2):
+                parsed_date = self._parse_date(date_val)
+                if parsed_date:
+                    row_data = {"row": i, sheet.date_column: parsed_date}
+                    if sheet.currency_column:
+                        row_data[sheet.currency_column] = currency_val.strip().upper() if currency_val else ""
+                    valid.append(row_data)
+                else:
+                    invalid.append({"row": i, "value": date_val})
+
             return {"data": valid, "invalid_data": invalid}
         except Exception as e:
             logging.error(f"Failed to read sheet '{sheet.sheet_name}': {traceback.format_exc()}")
-
             return {"data": [], "invalid_data": [], "error": str(e)}
 
     def _apply_rates(self, data: list, rates: list, sheet: Sheet) -> list:
         rate_map = {r["date"]: r["value_sell"] for r in rates if r["source"] == sheet.rate_type}
-        sorted_dates = sorted(rate_map.keys())
-        sorted_datetimes = [datetime.strptime(date, "%Y-%m-%d") for date in sorted_dates]
 
         for row in data:
+            if sheet.currency_column:
+                currency = row.get(sheet.currency_column, "").upper()
+                if currency == "USD":
+                    row[sheet.rate_column] = 1
+                    continue
+
             original_date = row.get(sheet.date_column)
             matched_date = self._resolve_rate_date(original_date, rate_map)
 
@@ -63,15 +94,14 @@ class SheetService:
     def _write_rates(self, sheet: Sheet, data: list) -> dict:
         try:
             ws = self.client.open_by_key(sheet.worksheet_id).worksheet(sheet.sheet_name)
-            headers = ws.row_values(1)
+            headers = self._retry_gspread_call(ws.row_values, 1)
 
             if sheet.rate_column not in headers:
                 logging.error(f"[{sheet.sheet_name}] Rate column '{sheet.rate_column}' not found. Headers: {headers}")
                 return {"error": f"Rate column '{sheet.rate_column}' not found."}
 
             col_idx = headers.index(sheet.rate_column) + 1
-            updates = []
-            skipped = []
+            updates, skipped = [], []
 
             for row in data:
                 if sheet.rate_column not in row:
@@ -89,7 +119,7 @@ class SheetService:
                 })
 
             if updates:
-                ws.batch_update(updates, value_input_option="RAW")
+                self._retry_gspread_call(ws.batch_update, updates, value_input_option="RAW")
                 logging.info(f"[{sheet.sheet_name}] ✅ Wrote {len(updates)} cells.")
             else:
                 logging.warning(f"[{sheet.sheet_name}] ⚠️ No updates were made. All rows skipped.")
@@ -132,3 +162,35 @@ class SheetService:
                 return date_str
 
         return None
+
+    def append_custom_rates(self, sheet: Sheet, rows: list, expected_headers: list) -> dict:
+        try:
+            ws = self.client.open_by_key(sheet.worksheet_id).worksheet(sheet.sheet_name)
+
+            # Validate headers
+            headers = self._retry_gspread_call(ws.row_values, 1)
+            missing = [h for h in expected_headers if h not in headers]
+            if missing:
+                return {"error": f"Missing columns: {missing}"}
+
+            # Sort rows descending by date
+            rows.sort(key=lambda x: x[0], reverse=True)
+
+            # Resize if needed
+            total_rows_needed = len(rows) + 1  # +1 for header
+            if total_rows_needed > ws.row_count:
+                self._retry_gspread_call(ws.resize, total_rows_needed)
+
+            # Clear all below header
+            end_col = len(expected_headers)
+            clear_range = f"A2:{chr(64+end_col)}{ws.row_count}"
+            self._retry_gspread_call(ws.batch_clear, [clear_range])
+
+            # Write new data starting from A2
+            self._retry_gspread_call(ws.update, f"A2", rows)
+
+            logging.info(f"[{sheet.sheet_name}] ✅ Overwrote {len(rows)} rows, newest first.")
+            return {"message": f"Overwrote {len(rows)} rate rows."}
+        except Exception as e:
+            logging.error(f"Error writing combined rate history: {e}")
+            return {"error": str(e)}

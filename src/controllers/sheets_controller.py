@@ -29,12 +29,12 @@ rates_service = RatesService()
 SHEETS_TO_UPDATE = [
     Sheet("16GpI2yKovf5sqyeBD42CAMP1W4C2-Ap_tpuoBPBv34s", "Ventas", "FECHA DE INGRESO", "COTIZACIÓN OFICIAL", "Oficial"),
     Sheet("16GpI2yKovf5sqyeBD42CAMP1W4C2-Ap_tpuoBPBv34s", "Ventas", "FECHA DE INGRESO", "COTIZACIÓN BLUE", "Blue"),
-    Sheet("1oJ_miq5ZI-A28-cyK4gZMXWAP5PdO94nkFOAHYRm4c8", "Selección IT", "FECHA DE INICIO", "COTIZ", "Blue"),
-    Sheet("1oJ_miq5ZI-A28-cyK4gZMXWAP5PdO94nkFOAHYRm4c8", "Selección", "FECHA DE INICIO", "COTIZ", "Blue"),
-    Sheet("1oJ_miq5ZI-A28-cyK4gZMXWAP5PdO94nkFOAHYRm4c8", "Employee Experience", "FECHA DE INICIO", "COTIZ", "Blue"),
-    Sheet("1oJ_miq5ZI-A28-cyK4gZMXWAP5PdO94nkFOAHYRm4c8", "Cap. In Company", "FECHA DE INICIO", "COTIZ", "Blue"),
-    Sheet("1oJ_miq5ZI-A28-cyK4gZMXWAP5PdO94nkFOAHYRm4c8", "Workshop", "FECHA DE INICIO", "COTIZ", "Blue"),
-    Sheet("1oJ_miq5ZI-A28-cyK4gZMXWAP5PdO94nkFOAHYRm4c8", "Otros Ing", "FECHA DE INICIO", "COTIZ", "Blue"),
+    Sheet("1oJ_miq5ZI-A28-cyK4gZMXWAP5PdO94nkFOAHYRm4c8", "Selección IT", "FECHA DE INICIO", "COTIZ", "Blue", "MONEDA"),
+    Sheet("1oJ_miq5ZI-A28-cyK4gZMXWAP5PdO94nkFOAHYRm4c8", "Selección", "FECHA DE INICIO", "COTIZ", "Blue", "MONEDA"),
+    Sheet("1oJ_miq5ZI-A28-cyK4gZMXWAP5PdO94nkFOAHYRm4c8", "Employee Experience", "FECHA DE INICIO", "COTIZ", "Blue", "MONEDA"),
+    Sheet("1oJ_miq5ZI-A28-cyK4gZMXWAP5PdO94nkFOAHYRm4c8", "Cap. In Company", "FECHA DE INICIO", "COTIZ", "Blue", "MONEDA"),
+    Sheet("1oJ_miq5ZI-A28-cyK4gZMXWAP5PdO94nkFOAHYRm4c8", "Workshop", "FECHA DE INICIO", "COTIZ", "Blue", "MONEDA"),
+    Sheet("1oJ_miq5ZI-A28-cyK4gZMXWAP5PdO94nkFOAHYRm4c8", "Otros Ing", "FECHA DE INICIO", "COTIZ", "Blue", "MONEDA"),
 ]
 
 
