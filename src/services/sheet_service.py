@@ -88,6 +88,9 @@ class SheetService:
                 row[sheet.rate_column] = rate_map[matched_date]
             else:
                 row["_missing_rate_for_date"] = original_date
+                logging.warning(
+                    f"[{sheet.sheet_name}] Row {row.get('row')} – could not resolve rate for date '{original_date}'"
+                )
 
         return data
 
@@ -124,9 +127,8 @@ class SheetService:
             else:
                 logging.warning(f"[{sheet.sheet_name}] ⚠️ No updates were made. All rows skipped.")
 
-            for row_num, reason, date in skipped:
-                logging.warning(f"[{sheet.sheet_name}] Skipped row {row_num} (Date: {date}) ➜ {reason}")
-
+            if skipped:
+                logging.info(f"[{sheet.sheet_name}] ⏭️ Skipped {len(skipped)} rows due to missing or invalid rates.")
             return {
                 "message": f"Updated {len(updates)} rows." if updates else "No updates were made.",
                 "skipped_rows": len(skipped),
@@ -145,7 +147,12 @@ class SheetService:
             return None
 
     def _resolve_rate_date(self, target: str, rate_map: dict, max_lookback_days: int = 10) -> str | None:
-        target_date = datetime.strptime(target, "%Y-%m-%d")
+        try:
+            target_date = datetime.strptime(target, "%Y-%m-%d")
+        except ValueError:
+            logging.warning(f"⚠️ Skipping rate resolution for malformed date string: '{target}'")
+            return None
+
         today = datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
 
         if target_date > today:
@@ -194,3 +201,6 @@ class SheetService:
         except Exception as e:
             logging.error(f"Error writing combined rate history: {e}")
             return {"error": str(e)}
+
+    def _get_logger(self, sheet_name: str):
+        return logging.LoggerAdapter(logging.getLogger(), {"sheet": sheet_name})

@@ -26,6 +26,7 @@ sheets_bp = Blueprint("sheets", __name__)
 sheet_service = SheetService(get_sheet_client())
 rates_service = RatesService()
 
+
 SHEETS_TO_UPDATE = [
     Sheet("16GpI2yKovf5sqyeBD42CAMP1W4C2-Ap_tpuoBPBv34s", "Ventas", "FECHA DE INGRESO", "COTIZACIÓN OFICIAL", "Oficial"),
     Sheet("16GpI2yKovf5sqyeBD42CAMP1W4C2-Ap_tpuoBPBv34s", "Ventas", "FECHA DE INGRESO", "COTIZACIÓN BLUE", "Blue"),
@@ -35,6 +36,7 @@ SHEETS_TO_UPDATE = [
     Sheet("1oJ_miq5ZI-A28-cyK4gZMXWAP5PdO94nkFOAHYRm4c8", "Cap. In Company", "FECHA DE INICIO", "COTIZ", "Blue", "MONEDA"),
     Sheet("1oJ_miq5ZI-A28-cyK4gZMXWAP5PdO94nkFOAHYRm4c8", "Workshop", "FECHA DE INICIO", "COTIZ", "Blue", "MONEDA"),
     Sheet("1oJ_miq5ZI-A28-cyK4gZMXWAP5PdO94nkFOAHYRm4c8", "Otros Ing", "FECHA DE INICIO", "COTIZ", "Blue", "MONEDA"),
+    Sheet("1amlJG3ggXYm7tuyAxxsQIN9pg47u9y1tk4cW2gaSr5o", "Hoja 1", "Fecha de inicio", "Cotiz USD", "Blue"),
 ]
 
 
