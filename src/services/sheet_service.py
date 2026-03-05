@@ -202,5 +202,91 @@ class SheetService:
             logging.error(f"Error writing combined rate history: {e}")
             return {"error": str(e)}
 
+    def update_missing_sales_rates(self, worksheet_id: str, sheet_name: str, rates: list) -> dict:
+        """
+        Fills COTIZACIÓN OFICIAL and COTIZACIÓN BLUE for rows that have a FECHA DE VENTA 
+        but are missing one or both exchange rates.
+        """
+        try:
+            ws = self.client.open_by_key(worksheet_id).worksheet(sheet_name)
+            data = self._retry_gspread_call(ws.get_all_values)
+            if not data:
+                return {"error": "Sheet is empty"}
+
+            headers = data[0]
+            rows = data[1:]
+
+            date_col = "FECHA DE VENTA"
+            official_col = "COTIZACIÓN OFICIAL"
+            blue_col = "COTIZACIÓN BLUE"
+
+            if date_col not in headers or official_col not in headers or blue_col not in headers:
+                logging.error(f"[{sheet_name}] Missing columns. Headers found: {headers}")
+                return {"error": f"Required columns missing: {date_col}, {official_col} or {blue_col}"}
+
+            date_idx = headers.index(date_col)
+            off_idx = headers.index(official_col)
+            blue_idx = headers.index(blue_col)
+
+            official_rates = {r["date"]: r["value_sell"] for r in rates if r["source"] == "Oficial"}
+            blue_rates = {r["date"]: r["value_sell"] for r in rates if r["source"] == "Blue"}
+
+            updates = []
+            rows_affected = 0
+
+            for i, row in enumerate(rows, start=2):
+                date_val = row[date_idx].strip()
+                if not date_val:
+                    continue
+
+                curr_off = row[off_idx].strip()
+                curr_blue = row[blue_idx].strip()
+
+                # Only proceed if at least one rate is missing
+                if curr_off and curr_blue:
+                    continue
+
+                parsed_date = self._parse_date(date_val)
+                if not parsed_date:
+                    continue
+
+                # Resolve and queue updates
+                match_off = self._resolve_rate_date(parsed_date, official_rates)
+                match_blue = self._resolve_rate_date(parsed_date, blue_rates)
+
+                row_updated = False
+                if match_off and not curr_off:
+                    updates.append({
+                        "range": gspread.utils.rowcol_to_a1(i, off_idx + 1),
+                        "values": [[official_rates[match_off]]]
+                    })
+                    row_updated = True
+
+                if match_blue and not curr_blue:
+                    updates.append({
+                        "range": gspread.utils.rowcol_to_a1(i, blue_idx + 1),
+                        "values": [[blue_rates[match_blue]]]
+                    })
+                    row_updated = True
+
+                if row_updated:
+                    rows_affected += 1
+
+            if updates:
+                self._retry_gspread_call(ws.batch_update, updates, value_input_option="RAW")
+                logging.info(f"[{sheet_name}] ✅ Updated {rows_affected} rows ({len(updates)} cells).")
+            else:
+                logging.info(f"[{sheet_name}] No missing rates found to update.")
+
+            return {
+                "message": f"Updated {rows_affected} rows." if updates else "No updates needed.",
+                "total_cells": len(updates)
+            }
+
+        except Exception as e:
+            msg = f"Error in update_missing_sales_rates for '{sheet_name}': {e}"
+            logging.error(msg)
+            return {"error": msg}
+
     def _get_logger(self, sheet_name: str):
         return logging.LoggerAdapter(logging.getLogger(), {"sheet": sheet_name})
