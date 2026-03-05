@@ -72,3 +72,12 @@ def update_sheet():
             <pre>{{ logs }}</pre>
         </body></html>
     """, results=results, logs=log_handler.get_logs())
+
+
+@sheets_bp.route("/update_sales_missing", methods=["GET"])
+def update_sales_missing():
+    """Endpoint specifically for the Sales sheet to fill missing dual rates."""
+    rates = rates_service.get_rates()
+    sheet_id = "16GpI2yKovf5sqyeBD42CAMP1W4C2-Ap_tpuoBPBv34s"
+    result = sheet_service.update_missing_sales_rates(sheet_id, "Ventas", rates)
+    return result
