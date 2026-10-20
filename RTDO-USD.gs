@@ -7,12 +7,12 @@
 
 // --- CONFIGURACIÓN GLOBAL ---
 const SERVICIOS_MASTER = [
-  "Seleccion IT", 
-  "Seleccion Generalista", 
+  "Seleccion IT",
+  "Seleccion Generalista",
   "Employee Experience",
-  "Capacitacion In Company", 
-  "Workshop o Curso Online", 
-  "Otros Ing", 
+  "Capacitacion In Company",
+  "Workshop o Curso Online",
+  "Otros Ing",
   "Outsourcing",
   "PR-HIST"
 ];
@@ -24,51 +24,146 @@ const CANT_COL_ORIGEN = 61; // Exactamente 61 columnas según tu lista actualiza
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('🚀 GiAssistant')
-      .addItem('🔄 Actualizar USD Blue (Columna AT)', 'updateServiceRates')
+      .addItem('🔄 Actualizar USD Blue (Columna AO)', 'updateServiceRates')
       .addSeparator()
       .addItem('📥 Reconstruir RTDO', 'initialSyncAll')
       .addItem('🛠️ Reparar Activadores', 'setupTrigger')
+      .addSeparator()
+      .addItem('📋 Generar Lista Clientes (REF. PAGO)', 'generarListaClientes')
       .addToUi();
 }
 
-// --- 2. ACTUALIZACIÓN DE USD BLUE ---
+// --- 2. ACTUALIZACIÓN DE USD BLUE (Módulo Modular & Escalable) ---
+
+const COLUMNAS_PRESUP = {
+  MONEDA: 3,  // Columna D (Index 3)
+  VENTA: 4,   // Columna E (Index 4)
+  INICIO: 5,  // Columna F (Index 5)
+  COTIZ: 40,  // Columna AO (Index 40)
+  COBRO2: 48  // Columna AW (Index 48)
+};
+
+/**
+ * Función principal disparada por el menú para actualizar cotizaciones en las hojas de servicio
+ */
 function updateServiceRates() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const apiURL = "https://api.bluelytics.com.ar/v2/evolution.json";
   try {
-    const res = JSON.parse(UrlFetchApp.fetch(apiURL).getContentText());
-    const blueMap = {};
-    res.forEach(r => { if (r.source === "Blue") blueMap[r.date] = r.value_sell; });
-    let total = 0;
-    SERVICIOS_MASTER.forEach(nombre => {
-      const sheet = ss.getSheetByName(nombre);
-      if (!sheet) return;
-      const data = sheet.getDataRange().getValues();
-      const colCOTIZ = 45; // Columna "COTIZ" (Index 45, Columna 46)
-      
-      for (let i = 1; i < data.length; i++) {
-        // Si el ID está vacío o si ya tiene cotización, pasar
-        if (data[i][0] === "" || (data[i][colCOTIZ] !== "" && data[i][colCOTIZ] !== null)) continue;
-        
-        let valor = null;
-        let d = (data[i][8] instanceof Date) ? data[i][8] : data[i][7]; // 8: INICIO, 7: VENTA/PRESUP
-        
-        if (!(d instanceof Date) || isNaN(d) || d.getFullYear() < 2026) continue;
-        
-        let iso = Utilities.formatDate(d, "GMT", "yyyy-MM-dd");
-        const resDate = resolveDateFallback(iso, blueMap);
-        if (resDate) valor = blueMap[resDate];
-        
-        if (valor !== null) {
-          sheet.getRange(i + 1, colCOTIZ + 1).setValue(valor).setNumberFormat("#,##0");
-          total++;
-        }
+    const blueMap = fetchBluelyticsRates();
+    if (!blueMap || Object.keys(blueMap).length === 0) {
+      SpreadsheetApp.getUi().alert("⚠️ No se pudo obtener datos del dólar blue de Bluelytics.");
+      return;
+    }
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let totalFilasActualizadas = 0;
+
+    SERVICIOS_MASTER.forEach(nombreHoja => {
+      const sheet = ss.getSheetByName(nombreHoja);
+      if (sheet) {
+        totalFilasActualizadas += processServiceSheet(sheet, blueMap);
       }
     });
-    SpreadsheetApp.getUi().alert("✅ Cotizaciones actualizadas: " + total);
-  } catch(e) { SpreadsheetApp.getUi().alert("Error USD: " + e.message); }
+
+    SpreadsheetApp.getUi().alert(`✅ Cotizaciones actualizadas (2026+): ${totalFilasActualizadas} filas.`);
+  } catch(e) {
+    SpreadsheetApp.getUi().alert(`❌ Error al actualizar USD: ${e.message}`);
+  }
 }
 
+/**
+ * Obtiene el historial de cotizaciones de Dólar Blue desde la API de Bluelytics
+ * @returns {Object} Mapa de fechas a valores de venta { "yyyy-MM-dd": rate }
+ */
+function fetchBluelyticsRates() {
+  const apiURL = "https://api.bluelytics.com.ar/v2/evolution.json";
+  const response = UrlFetchApp.fetch(apiURL);
+  const data = JSON.parse(response.getContentText());
+
+  const blueMap = {};
+  data.forEach(item => {
+    if (item.source === "Blue") {
+      blueMap[item.date] = item.value_sell;
+    }
+  });
+  return blueMap;
+}
+
+/**
+ * Procesa todas las filas de una hoja de servicio específica
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet Hoja a procesar
+ * @param {Object} blueMap Historial de cotizaciones
+ * @returns {number} Cantidad de filas actualizadas en esta hoja
+ */
+function processServiceSheet(sheet, blueMap) {
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return 0;
+
+  let actualizadasHoja = 0;
+
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+
+    // 1. Si el ID está vacío, pasar
+    if (row[0] === "" || row[0] === null) continue;
+
+    // 2. Resolver la fecha efectiva de la fila según prioridad (COBRO CUOTA 2 -> INICIO -> VENTA)
+    const fecha = resolveEffectiveRowDate(row);
+    if (!fecha || isNaN(fecha.getTime())) continue;
+
+    // 3. Filtrar para procesar solo desde 2026 en adelante
+    if (fecha.getFullYear() < 2026) continue;
+
+    // 4. Evaluar moneda
+    const celdaCotizRango = sheet.getRange(i + 1, COLUMNAS_PRESUP.COTIZ + 1);
+    const moneda = row[COLUMNAS_PRESUP.MONEDA] ? row[COLUMNAS_PRESUP.MONEDA].toString().trim().toUpperCase() : "";
+
+    if (moneda === "USD") {
+      celdaCotizRango.setValue(1).setNumberFormat("#,##0.00");
+      actualizadasHoja++;
+      continue;
+    }
+
+    // 5. Para el resto (ARS / Otras), obtener la cotización del dólar blue
+    const isoDate = Utilities.formatDate(fecha, "GMT", "yyyy-MM-dd");
+    const resolvedDateStr = resolveDateFallback(isoDate, blueMap);
+    const valorBlue = resolvedDateStr ? blueMap[resolvedDateStr] : null;
+
+    if (valorBlue !== null) {
+      celdaCotizRango.setValue(valorBlue).setNumberFormat("#,##0.00");
+      actualizadasHoja++;
+    }
+  }
+
+  return actualizadasHoja;
+}
+
+/**
+ * Determina la fecha priorizando FECHA DE COBRO CUOTA 2, luego FECHA DE INICIO y por último FECHA DE VENTA
+ * @param {Array} row Fila de datos de la hoja
+ * @returns {Date|null} Objeto Date o null si no se encuentra fecha válida
+ */
+function resolveEffectiveRowDate(row) {
+  const fechaCobro2 = row[COLUMNAS_PRESUP.COBRO2];
+  if (fechaCobro2 instanceof Date && !isNaN(fechaCobro2.getTime())) {
+    return fechaCobro2;
+  }
+
+  const fechaInicio = row[COLUMNAS_PRESUP.INICIO];
+  if (fechaInicio instanceof Date && !isNaN(fechaInicio.getTime())) {
+    return fechaInicio;
+  }
+
+  const fechaVenta = row[COLUMNAS_PRESUP.VENTA];
+  if (fechaVenta instanceof Date && !isNaN(fechaVenta.getTime())) {
+    return fechaVenta;
+  }
+
+  return null;
+}
+
+/**
+ * Busca hacia atrás en el calendario (hasta 15 días) si la fecha cae en fin de semana o feriado
+ */
 function resolveDateFallback(iso, map) {
   let d = new Date(iso + "T12:00:00");
   let today = new Date();
@@ -87,7 +182,7 @@ function resolveDateFallback(iso, map) {
 function onEditTrigger(e) {
   if (!e || !e.source) return;
   const lock = LockService.getScriptLock();
-  if (!lock.tryLock(15000)) return; 
+  if (!lock.tryLock(15000)) return;
   try {
     const ss = e.source;
     const sheet = ss.getActiveSheet();
@@ -101,7 +196,7 @@ function onEditTrigger(e) {
     const destSheet = ss.getSheetByName(HOJA_RTDO_FINAL) || ss.insertSheet(HOJA_RTDO_FINAL);
     const currentRow = range.getRow();
     const id = sheet.getRange(currentRow, 1).getValue().toString().trim();
-    
+
     // Si se borró el ID, purgamos huérfanos
     if (!id) {
       purgeSheetOrphans(ss, pIdx, sheet);
@@ -147,10 +242,10 @@ function purgeSheetOrphans(ss, pIdx, sourceSheet) {
   if (!destSheet) return;
   const data = destSheet.getDataRange().getValues();
   const sourceIds = new Set(sourceSheet.getDataRange().getValues().map(r => r[0] ? r[0].toString().trim().toLowerCase() : "").filter(id => id !== ""));
-  
+
   for (let i = data.length - 1; i >= 1; i--) {
     // La columna de prioridad (P) es ahora la 62 (Index 61)
-    if (data[i][CANT_COL_ORIGEN] === pIdx) { 
+    if (data[i][CANT_COL_ORIGEN] === pIdx) {
       const id = data[i][0] ? data[i][0].toString().trim().toLowerCase() : "";
       if (!id || !sourceIds.has(id)) destSheet.deleteRow(i + 1);
     }
@@ -175,7 +270,7 @@ function initialSyncAll() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const dest = ss.getSheetByName(HOJA_RTDO_FINAL) || ss.insertSheet(HOJA_RTDO_FINAL);
   dest.clear();
-  
+
   let report = "Carga Finalizada (Estructura de 61 Columnas):\n";
   let firstHeader = true;
 
@@ -229,4 +324,73 @@ function setupTrigger() {
   ScriptApp.newTrigger('onEditTrigger').forSpreadsheet(ss).onEdit().create();
   ScriptApp.newTrigger('onChangeTrigger').forSpreadsheet(ss).onChange().create();
   SpreadsheetApp.getUi().alert("✅ Activadores reparados para estructura de 61 columnas.");
+}
+
+// --- 6. GENERAR LISTA DE CLIENTES EN REF. PAGO ---
+function generarListaClientes() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const rtdoSheet = ss.getSheetByName(HOJA_RTDO_FINAL);
+
+  if (!rtdoSheet) {
+    SpreadsheetApp.getUi().alert("❌ No se encontró la hoja " + HOJA_RTDO_FINAL);
+    return;
+  }
+
+  const refPagoSheet = ss.getSheetByName("REF. PAGO");
+  if (!refPagoSheet) {
+    SpreadsheetApp.getUi().alert("❌ No se encontró la hoja REF. PAGO");
+    return;
+  }
+
+  const data = rtdoSheet.getDataRange().getValues();
+  if (data.length <= 1) {
+    SpreadsheetApp.getUi().alert("⚠️ La hoja " + HOJA_RTDO_FINAL + " no tiene datos suficientes.");
+    return;
+  }
+
+  const headers = data[0].map(h => h.toString().trim().toUpperCase());
+  const colCliente = headers.indexOf("CLIENTE");
+  let colEmail = headers.indexOf("EMAIL");
+
+  // En caso de que no encuentre EMAIL explícitamente, según la estructura es la columna 60 (index 60)
+  if (colEmail === -1) {
+    colEmail = 60; // Index 60 según "61 columnas (ID -> EMAIL)"
+  }
+
+  if (colCliente === -1) {
+    SpreadsheetApp.getUi().alert("❌ No se encontró la columna CLIENTE en " + HOJA_RTDO_FINAL);
+    return;
+  }
+
+  // Extraer combinaciones únicas de Cliente y Email
+  const clientMap = new Map();
+
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const cliente = row[colCliente] ? row[colCliente].toString().trim() : "";
+    const email = row[colEmail] ? row[colEmail].toString().trim() : "";
+
+    if (cliente !== "") {
+      // Guardar el email, priorizando si ya existe uno o si encontramos uno nuevo válido
+      if (!clientMap.has(cliente) || (clientMap.get(cliente) === "" && email !== "")) {
+        clientMap.set(cliente, email);
+      }
+    }
+  }
+
+  // Ordenar alfabéticamente por nombre de cliente
+  const sortedClients = Array.from(clientMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+
+  // Preparar los datos para escribir
+  const outputData = [["Cliente", "Email"]]; // Cabeceras
+  sortedClients.forEach(clientInfo => {
+    outputData.push([clientInfo[0], clientInfo[1]]);
+  });
+
+  // Limpiar la hoja REF. PAGO y escribir los datos
+  refPagoSheet.clear();
+  refPagoSheet.getRange(1, 1, outputData.length, 2).setValues(outputData);
+  refPagoSheet.getRange(1, 1, 1, 2).setFontWeight("bold"); // Negrita en las cabeceras
+
+  SpreadsheetApp.getUi().alert(`✅ Lista generada con éxito en 'REF. PAGO' con ${sortedClients.length} clientes únicos.`);
 }
