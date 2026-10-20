@@ -40,7 +40,7 @@ const COLUMNAS_PRESUP = {
   VENTA: 4,   // Columna E (Index 4)
   INICIO: 5,  // Columna F (Index 5)
   COTIZ: 40,  // Columna AO (Index 40)
-  COBRO2: 48  // Columna AW (Index 48)
+  COBRO2: 49  // Columna AX (Index 49)
 };
 
 /**
